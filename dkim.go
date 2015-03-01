@@ -54,20 +54,23 @@ func New(conf Conf, keyPEM []byte) (d *DKIM, err error) {
 	return dkim, nil
 }
 
+var (
+	rxWsCompress = regexp.MustCompile(`[ \t]+`)
+	rxWsCRLF     = regexp.MustCompile(` \r\n`)
+)
+
 func (d *DKIM) canonicalBody(body []byte) []byte {
 	if d.conf.RelaxedBody() {
 		if len(body) == 0 {
 			return nil
 		}
 		// Reduce WSP sequences to single WSP
-		rx := regexp.MustCompile(`[ \t]+`)
-		body = rx.ReplaceAll(body, []byte(" "))
+		body = rxWsCompress.ReplaceAll(body, []byte(" "))
 
 		// Ignore all whitespace at end of lines.
 		// Implementations MUST NOT remove the CRLF
 		// at the end of the line
-		rx2 := regexp.MustCompile(` \r\n`)
-		body = rx2.ReplaceAll(body, []byte("\r\n"))
+		body = rxWsCRLF.ReplaceAll(body, []byte("\r\n"))
 	} else {
 		if len(body) == 0 {
 			return []byte("\r\n")
@@ -75,8 +78,12 @@ func (d *DKIM) canonicalBody(body []byte) []byte {
 	}
 
 	// Ignore all empty lines at the end of the message body
-	rx3 := regexp.MustCompile(`[ \r\n]*\z`)
-	body = rx3.ReplaceAll(body, []byte(""))
+	for i := len(body) - 1; i >= 0; i-- {
+		if body[i] != '\r' && body[i] != '\n' && body[i] != ' ' {
+			body = body[:i+1]
+			break
+		}
+	}
 
 	return append(body, '\r', '\n')
 }
